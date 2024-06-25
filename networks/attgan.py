@@ -3,8 +3,6 @@
 # This work is licensed under the MIT License. To view a copy of this license,
 # visit https://opensource.org/licenses/MIT.
 
-"""AttGAN, generator, and discriminator."""
-
 import torch
 import torch.nn as nn
 from networks.nn import LinearBlock, Conv2dBlock, ConvTranspose2dBlock
@@ -138,16 +136,16 @@ class AttGAN():
             args.n_attrs, args.shortcut_layers, args.inject_layers, args.img_size
         )
         self.G.train()
-        if self.gpu: self.G.cuda()
-        summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs, 1, 1)], batch_size=4, device='cuda' if args.gpu else 'cpu')
+        self.G.cuda(args.gpu)
+        summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs, 1, 1)], batch_size=4, device=f"cuda:{args.gpu}")
         
         self.D = Discriminators(
             args.dis_dim, args.dis_norm, args.dis_acti,
             args.dis_fc_dim, args.dis_fc_norm, args.dis_fc_acti, args.dis_layers, args.img_size
         )
         self.D.train()
-        if self.gpu: self.D.cuda()
-        summary(self.D, [(3, args.img_size, args.img_size)], batch_size=4, device='cuda' if args.gpu else 'cpu')
+        self.D.cuda(args.gpu)
+        summary(self.D, [(3, args.img_size, args.img_size)], batch_size=4, device=f"cuda:{args.gpu}")
         
         if self.multi_gpu:
             self.G = nn.DataParallel(self.G)
@@ -205,7 +203,7 @@ class AttGAN():
                     beta = torch.rand_like(a)
                     b = a + 0.5 * a.var().sqrt() * beta
                 alpha = torch.rand(a.size(0), 1, 1, 1)
-                alpha = alpha.cuda() if self.gpu else alpha
+                alpha = alpha.cuda(args.gpu)
                 inter = a + alpha * (b - a)
                 return inter
             x = interpolate(real, fake).requires_grad_(True)
@@ -280,38 +278,3 @@ class AttGAN():
             'G': self.G.state_dict()
         }
         torch.save(states, path)
-
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--img_size', dest='img_size', type=int, default=128)
-    parser.add_argument('--shortcut_layers', dest='shortcut_layers', type=int, default=1)
-    parser.add_argument('--inject_layers', dest='inject_layers', type=int, default=0)
-    parser.add_argument('--enc_dim', dest='enc_dim', type=int, default=64)
-    parser.add_argument('--dec_dim', dest='dec_dim', type=int, default=64)
-    parser.add_argument('--dis_dim', dest='dis_dim', type=int, default=64)
-    parser.add_argument('--dis_fc_dim', dest='dis_fc_dim', type=int, default=1024)
-    parser.add_argument('--enc_layers', dest='enc_layers', type=int, default=5)
-    parser.add_argument('--dec_layers', dest='dec_layers', type=int, default=5)
-    parser.add_argument('--dis_layers', dest='dis_layers', type=int, default=5)
-    parser.add_argument('--enc_norm', dest='enc_norm', type=str, default='batchnorm')
-    parser.add_argument('--dec_norm', dest='dec_norm', type=str, default='batchnorm')
-    parser.add_argument('--dis_norm', dest='dis_norm', type=str, default='instancenorm')
-    parser.add_argument('--dis_fc_norm', dest='dis_fc_norm', type=str, default='none')
-    parser.add_argument('--enc_acti', dest='enc_acti', type=str, default='lrelu')
-    parser.add_argument('--dec_acti', dest='dec_acti', type=str, default='relu')
-    parser.add_argument('--dis_acti', dest='dis_acti', type=str, default='lrelu')
-    parser.add_argument('--dis_fc_acti', dest='dis_fc_acti', type=str, default='relu')
-    parser.add_argument('--lambda_1', dest='lambda_1', type=float, default=100.0)
-    parser.add_argument('--lambda_2', dest='lambda_2', type=float, default=10.0)
-    parser.add_argument('--lambda_3', dest='lambda_3', type=float, default=1.0)
-    parser.add_argument('--lambda_gp', dest='lambda_gp', type=float, default=10.0)
-    parser.add_argument('--mode', dest='mode', default='wgan', choices=['wgan', 'lsgan', 'dcgan'])
-    parser.add_argument('--lr', dest='lr', type=float, default=0.0002, help='learning rate')
-    parser.add_argument('--beta1', dest='beta1', type=float, default=0.5)
-    parser.add_argument('--beta2', dest='beta2', type=float, default=0.999)
-    parser.add_argument('--gpu', action='store_true')
-    args = parser.parse_args()
-    args.n_attrs = 13
-    args.betas = (args.beta1, args.beta2)
-    attgan = AttGAN(args)
