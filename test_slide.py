@@ -14,7 +14,7 @@ import torch
 import torch.utils.data as data
 import torchvision.utils as vutils
 
-from trainer.attgan import AttGAN
+from networks.attgan import AttGAN
 from data_handler.data import check_attribute_conflict
 from helpers import Progressbar
 from utils import find_model
