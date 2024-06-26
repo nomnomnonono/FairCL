@@ -6,7 +6,11 @@
 """Helper functions"""
 
 import os
+import random
 from glob import glob
+import numpy as np
+import torch
+import torch.backends.cudnn as cudnn
 
 
 def find_model(path, epoch='latest'):
@@ -18,3 +22,11 @@ def find_model(path, epoch='latest'):
     assert os.path.exists(file), 'File not found: ' + file
     print('Find model of {} epoch: {}'.format(epoch, file))
     return file
+
+
+def set_seed(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    cudnn.deterministic = True
+    cudnn.benchmark = True

@@ -12,8 +12,9 @@ from os.path import join
 import torch.utils.data as data
 
 from networks.attgan import AttGAN
-from trainers.trainer import Trainer
+from trainer.attgan import Trainer
 from helpers import Progressbar
+from utils import set_seed
 from tensorboardX import SummaryWriter
 
 
@@ -21,14 +22,15 @@ attrs_default = [
     'Bald', 'Bangs', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Bushy_Eyebrows',
     'Eyeglasses', 'Male', 'Mouth_Slightly_Open', 'Mustache', 'No_Beard', 'Pale_Skin', 'Young'
 ]
+attrs_default = ['Male']
 
 def parse(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--attrs', dest='attrs', default=attrs_default, nargs='+', help='attributes to learn')
-    parser.add_argument('--data', dest='data', type=str, choices=['CelebA', 'CelebA-HQ'], default='CelebA')
+    parser.add_argument('--sens', dest='sens', default="Male")
+    parser.add_argument('--target', dest='target', default="Attractive")
+    parser.add_argument('--data', dest='data', type=str, choices=['CelebA', 'UTKFace', 'FairFace'], default='CelebA')
     parser.add_argument('--data_path', dest='data_path', type=str, default='data/img_align_celeba')
     parser.add_argument('--attr_path', dest='attr_path', type=str, default='data/list_attr_celeba.txt')
-    parser.add_argument('--image_list_path', dest='image_list_path', type=str, default='data/image_list.txt')
     
     parser.add_argument('--img_size', dest='img_size', type=int, default=128)
     parser.add_argument('--shortcut_layers', dest='shortcut_layers', type=int, default=1)
@@ -67,34 +69,38 @@ def parse(args=None):
     parser.add_argument('--test_int', dest='test_int', type=float, default=1.0)
     parser.add_argument('--n_samples', dest='n_samples', type=int, default=16, help='# of sample images')
     
-    parser.add_argument('--save_interval', dest='save_interval', type=int, default=1000)
-    parser.add_argument('--sample_interval', dest='sample_interval', type=int, default=1000)
+    parser.add_argument('--save_interval', dest='save_interval', type=int, default=5)
+    parser.add_argument('--sample_interval', dest='sample_interval', type=int, default=1)
     parser.add_argument('--gpu', dest='gpu', type=int)
     parser.add_argument('--multi_gpu', dest='multi_gpu', action='store_true')
     parser.add_argument('--experiment_name', dest='experiment_name', default=datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y"))
+
+    parser.add_argument('--ratio', dest='ratio', type=float, default=0.01)
+    parser.add_argument('--seed', dest='seed', type=int, default=1)
+
     
     return parser.parse_args(args)
 
 
 def main(args):
+    set_seed(args.seed)
+
     args.lr_base = args.lr
-    args.n_attrs = len(args.attrs)
+    args.n_attrs = 1
     args.betas = (args.beta1, args.beta2)
 
     os.makedirs(join('output', args.experiment_name), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'checkpoint'), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'sample_training'), exist_ok=True)
-    with open(join('output', args.experiment_name, 'setting.txt'), 'w') as f:
+    os.makedirs(join('output', args.experiment_name, 'checkpoint_labeled'), exist_ok=True)
+    os.makedirs(join('output', args.experiment_name, 'sample_training_labeled'), exist_ok=True)
+    with open(join('output', args.experiment_name, 'setting_labeled.txt'), 'w') as f:
         f.write(json.dumps(vars(args), indent=4, separators=(',', ':')))
 
     if args.data == 'CelebA':
         from data_handler.data import CelebA
-        train_dataset = CelebA(args.data_path, args.attr_path, args.img_size, 'train', args.attrs)
-        valid_dataset = CelebA(args.data_path, args.attr_path, args.img_size, 'valid', args.attrs)
-    if args.data == 'CelebA-HQ':
-        from data_handler.data import CelebA_HQ
-        train_dataset = CelebA_HQ(args.data_path, args.attr_path, args.image_list_path, args.img_size, 'train', args.attrs)
-        valid_dataset = CelebA_HQ(args.data_path, args.attr_path, args.image_list_path, args.img_size, 'valid', args.attrs)
+        train_dataset = CelebA(args.data_path, args.attr_path, args.img_size, 'train', args.sens, args.target, args.ratio)
+        valid_dataset = CelebA(args.data_path, args.attr_path, args.img_size, 'valid', args.sens, args.target)
+    else:
+        pass
     
     args.it_per_epoch = len(train_dataset) // args.batch_size
 
@@ -112,15 +118,15 @@ def main(args):
     progressbar = Progressbar()
     writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
-    trainer = Trainer(
+    trainer = Trainer()
+    trainer.set_valid_image(valid_dataloader, args)
+    trainer.train_labeled(
         attgan,
         train_dataloader,
         progressbar,
         writer,
         args,
     )
-    trainer.set_valid_image(valid_dataloader, args)
-    trainer.train()
 
 
 if __name__ == '__main__':

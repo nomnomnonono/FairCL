@@ -7,11 +7,15 @@ import torch
 import torch.nn as nn
 from networks.nn import LinearBlock, Conv2dBlock, ConvTranspose2dBlock
 from torchsummary import summary
+import torch.autograd as autograd
+import torch.nn.functional as F
+import torch.optim as optim
 
 
 # This architecture is for images of 128x128
 # In the original AttGAN, slim.conv2d uses padding 'same'
 MAX_DIM = 64 * 16  # 1024
+
 
 class Generator(nn.Module):
     def __init__(self, enc_dim=64, enc_layers=5, enc_norm_fn='batchnorm', enc_acti_fn='lrelu',
@@ -81,6 +85,7 @@ class Generator(nn.Module):
             return self.decode(x, a)
         raise Exception('Unrecognized mode: ' + mode)
 
+
 class Discriminators(nn.Module):
     # No instancenorm in fcs in source code, which is different from paper.
     def __init__(self, dim=64, norm_fn='instancenorm', acti_fn='lrelu',
@@ -103,20 +108,13 @@ class Discriminators(nn.Module):
         )
         self.fc_cls = nn.Sequential(
             LinearBlock(1024 * self.f_size * self.f_size, fc_dim, fc_norm_fn, fc_acti_fn),
-            LinearBlock(fc_dim, 13, 'none', 'none')
+            LinearBlock(fc_dim, 1, 'none', 'none')
         )
     
     def forward(self, x):
         h = self.conv(x)
         h = h.view(h.size(0), -1)
         return self.fc_adv(h), self.fc_cls(h)
-
-
-
-import torch.autograd as autograd
-import torch.nn.functional as F
-import torch.optim as optim
-
 
 # multilabel_soft_margin_loss = sigmoid + binary_cross_entropy
 
@@ -129,6 +127,7 @@ class AttGAN():
         self.lambda_2 = args.lambda_2
         self.lambda_3 = args.lambda_3
         self.lambda_gp = args.lambda_gp
+        self.gpu = args.gpu
         
         self.G = Generator(
             args.enc_dim, args.enc_layers, args.enc_norm, args.enc_acti,
@@ -137,7 +136,7 @@ class AttGAN():
         )
         self.G.train()
         self.G.cuda(args.gpu)
-        summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs, 1, 1)], batch_size=4, device=f"cuda:{args.gpu}")
+        summary(self.G, [(3, args.img_size, args.img_size), (args.n_attrs, 1, 1)], batch_size=4, device=f"cuda")
         
         self.D = Discriminators(
             args.dis_dim, args.dis_norm, args.dis_acti,
@@ -145,7 +144,7 @@ class AttGAN():
         )
         self.D.train()
         self.D.cuda(args.gpu)
-        summary(self.D, [(3, args.img_size, args.img_size)], batch_size=4, device=f"cuda:{args.gpu}")
+        summary(self.D, [(3, args.img_size, args.img_size)], batch_size=4, device=f"cuda")
         
         if self.multi_gpu:
             self.G = nn.DataParallel(self.G)
@@ -197,13 +196,13 @@ class AttGAN():
         d_real, dc_real = self.D(img_a)
         d_fake, dc_fake = self.D(img_fake)
         
-        def gradient_penalty(f, real, fake=None):
+        def gradient_penalty(f, real, gpu, fake=None):
             def interpolate(a, b=None):
                 if b is None:  # interpolation in DRAGAN
                     beta = torch.rand_like(a)
                     b = a + 0.5 * a.var().sqrt() * beta
                 alpha = torch.rand(a.size(0), 1, 1, 1)
-                alpha = alpha.cuda(args.gpu)
+                alpha = alpha.cuda(gpu)
                 inter = a + alpha * (b - a)
                 return inter
             x = interpolate(real, fake).requires_grad_(True)
@@ -223,15 +222,16 @@ class AttGAN():
         if self.mode == 'wgan':
             wd = d_real.mean() - d_fake.mean()
             df_loss = -wd
-            df_gp = gradient_penalty(self.D, img_a, img_fake)
+            df_gp = gradient_penalty(self.D, img_a, self.gpu, fake=img_fake)
         if self.mode == 'lsgan':  # mean_squared_error
             df_loss = F.mse_loss(d_real, torch.ones_like(d_fake)) + \
                       F.mse_loss(d_fake, torch.zeros_like(d_fake))
-            df_gp = gradient_penalty(self.D, img_a)
+            df_gp = gradient_penalty(self.D, img_a, self.gpu)
         if self.mode == 'dcgan':  # sigmoid_cross_entropy
             df_loss = F.binary_cross_entropy_with_logits(d_real, torch.ones_like(d_real)) + \
                       F.binary_cross_entropy_with_logits(d_fake, torch.zeros_like(d_fake))
-            df_gp = gradient_penalty(self.D, img_a)
+            df_gp = gradient_penalty(self.D, img_a, self.gpu)
+
         dc_loss = F.binary_cross_entropy_with_logits(dc_real, att_a)
         d_loss = df_loss + self.lambda_gp * df_gp + self.lambda_3 * dc_loss
         
@@ -259,6 +259,13 @@ class AttGAN():
             'D': self.D.state_dict(),
             'optim_G': self.optim_G.state_dict(),
             'optim_D': self.optim_D.state_dict()
+        }
+        torch.save(states, path)
+    
+    def save_model(self, path):
+        states = {
+            'G': self.G.state_dict(),
+            'D': self.D.state_dict(),
         }
         torch.save(states, path)
     
