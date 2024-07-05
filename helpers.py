@@ -5,12 +5,6 @@
 
 """Helper functions for training."""
 
-def run_from_ipython():
-    try:
-        __IPYTHON__
-        return True
-    except NameError:
-        return False
 
 def name_experiment(prefix='', suffix=''):
     import datetime
@@ -26,13 +20,16 @@ def name_experiment(prefix='', suffix=''):
 class Progressbar():
     def __init__(self):
         self.p = None
+
     def __call__(self, iterable):
         from tqdm import tqdm
         self.p = tqdm(iterable)
         return self.p
+
     def say(self, **kwargs):
         if self.p is not None:
             self.p.set_postfix(**kwargs)
+
 
 def add_scalar_dict(writer, scalar_dict, iteration, directory=None):
     for key in scalar_dict:

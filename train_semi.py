@@ -12,7 +12,6 @@ from os.path import join
 import torch.utils.data as data
 
 from networks.attgan import AttGAN
-from networks.classifier import Classifier
 from trainer.attgan import Trainer
 from helpers import Progressbar
 from utils import set_seed
@@ -78,6 +77,7 @@ def parse(args=None):
 
     parser.add_argument('--ratio', dest='ratio', type=float, default=0.01)
     parser.add_argument('--seed', dest='seed', type=int, default=1)
+
     
     return parser.parse_args(args)
 
@@ -114,15 +114,14 @@ def main(args):
     )
     print('Training images:', len(train_dataset), '/', 'Validating images:', len(valid_dataset))
 
+    attgan = AttGAN(args)
     progressbar = Progressbar()
     writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
     trainer = Trainer()
-
-    model = AttGAN(args)
     trainer.set_valid_image(valid_dataloader, args)
-    trainer.train_labeled(
-        model,
+    trainer.train_semi(
+        attgan,
         train_dataloader,
         progressbar,
         writer,

@@ -66,8 +66,12 @@ class Trainer:
                 # To save storage space, I only checkpoint the weights of G.
                 # If you'd like to keep weights of G, D, optim_G, optim_D, please use save() instead of saveG().
                 model.save_model(os.path.join(
-                    'output', args.experiment_name, 'checkpoint_labeled', 'weights.{:d}.pth'.format(epoch + 1)
+                    'output', args.experiment_name, 'checkpoint_labeled', 'generator.{:d}.pth'.format(epoch + 1)
                 ))
+
+
+    def train_semi(self, model, train_dataloader, valid_dataloader, progressbar, writer, args):
+        pass
 
 
     def set_valid_image(self, valid_dataloader, args):
