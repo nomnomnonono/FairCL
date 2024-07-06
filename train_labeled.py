@@ -12,7 +12,6 @@ from os.path import join
 import torch.utils.data as data
 
 from networks.attgan import AttGAN
-from networks.classifier import Classifier
 from trainer.attgan import Trainer
 from helpers import Progressbar
 from utils import set_seed
@@ -90,9 +89,9 @@ def main(args):
     args.betas = (args.beta1, args.beta2)
 
     os.makedirs(join('output', args.experiment_name), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'checkpoint_labeled'), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'sample_training_labeled'), exist_ok=True)
-    with open(join('output', args.experiment_name, 'setting_labeled.txt'), 'w') as f:
+    os.makedirs(join('output', args.experiment_name, 'checkpoint'), exist_ok=True)
+    os.makedirs(join('output', args.experiment_name, 'sample_training'), exist_ok=True)
+    with open(join('output', args.experiment_name, 'setting.txt'), 'w') as f:
         f.write(json.dumps(vars(args), indent=4, separators=(',', ':')))
 
     if args.data == 'CelebA':

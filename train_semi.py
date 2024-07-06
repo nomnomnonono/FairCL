@@ -77,6 +77,8 @@ def parse(args=None):
 
     parser.add_argument('--ratio', dest='ratio', type=float, default=0.01)
     parser.add_argument('--seed', dest='seed', type=int, default=1)
+    parser.add_argument('--model_path', dest='model_path', type=str)
+    parser.add_argument('--threshold', dest='threshold', type=float, default=0.9)
 
     
     return parser.parse_args(args)
@@ -90,9 +92,10 @@ def main(args):
     args.betas = (args.beta1, args.beta2)
 
     os.makedirs(join('output', args.experiment_name), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'checkpoint_labeled'), exist_ok=True)
-    os.makedirs(join('output', args.experiment_name, 'sample_training_labeled'), exist_ok=True)
-    with open(join('output', args.experiment_name, 'setting_labeled.txt'), 'w') as f:
+    os.makedirs(join('output', args.experiment_name, 'checkpoint'), exist_ok=True)
+    os.makedirs(join('output', args.experiment_name, 'sample_training'), exist_ok=True)
+    os.makedirs(join('output', args.experiment_name, 'generated_sample'), exist_ok=True)
+    with open(join('output', args.experiment_name, 'setting.txt'), 'w') as f:
         f.write(json.dumps(vars(args), indent=4, separators=(',', ':')))
 
     if args.data == 'CelebA':
@@ -115,12 +118,21 @@ def main(args):
     print('Training images:', len(train_dataset), '/', 'Validating images:', len(valid_dataset))
 
     attgan = AttGAN(args)
+    attgan.load(args.model_path)
+
     progressbar = Progressbar()
     writer = SummaryWriter(join('output', args.experiment_name, 'summary'))
 
     trainer = Trainer()
     trainer.set_valid_image(valid_dataloader, args)
     trainer.train_semi(
+        attgan,
+        train_dataloader,
+        progressbar,
+        writer,
+        args,
+    )
+    trainer.train(
         attgan,
         train_dataloader,
         progressbar,

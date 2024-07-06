@@ -10,6 +10,7 @@ import os
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
+import torchvision.utils as vutils
 from PIL import Image
 from data_handler.data_utils import split_ssl_data
 
@@ -39,6 +40,8 @@ class CelebA(data.Dataset):
         
         if mode == 'train':
             self.images, self.sens, self.target, self.ulb_images, self.ulb_sens, self.ulb_target = split_ssl_data(images, sens_labels, target_labels, ratio, 2)
+            self.gen_ulb_images, self.gen_ulb_sens, self.clf_ulb_images, self.clf_ulb_sens = self.images, self.sens, self.images, self.sens
+            self.images, self.ulb_images, self.gen_ulb_images, self.clf_ulb_images = self.images.astype(object), self.ulb_images.astype(object), self.gen_ulb_images.astype(object), self.clf_ulb_images.astype(object)
         else:
             self.images, self.sens, self.target = images, sens_labels, target_labels
 
@@ -47,13 +50,58 @@ class CelebA(data.Dataset):
             transforms.Resize(image_size),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])                                       
-        self.length = len(self.images)
+        ])   
+        self.gen_tf = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])           
+
+        self.mode = "labeled"
+
+    def update_generater_training_data(self, indices, labels):
+        self.gen_ulb_images = np.concatenate((self.gen_ulb_images, self.ulb_images[indices]))
+        self.gen_ulb_sens = np.concatenate((self.gen_ulb_sens, labels))
+
+        self.clf_ulb_images = self.gen_ulb_images
+        self.clf_ulb_sens = self.gen_ulb_sens
+
+        self.ulb_images = np.delete(self.ulb_images, indices)
+        self.ulb_sens = np.delete(self.ulb_sens, indices)
+    
+    def update_classifier_training_data(self, images, labels, root):
+        self.clf_ulb_sens = np.concatenate((self.clf_ulb_sens, labels))
+
+        for i in range(len(images)):
+            vutils.save_image(images[i], os.path.join(root, f"{i}.jpg"), nrow=1, normalize=True, value_range=(0., 1.))
+            self.clf_ulb_images = np.append(self.clf_ulb_images, os.path.join(root, f"{i}.jpg"))
 
     def __getitem__(self, index):
-        img = self.tf(Image.open(os.path.join(self.data_path, self.images[index])))
-        sens = torch.tensor(self.sens[index])
-        return img, sens
+        if self.mode == "labeled":
+            img = self.tf(Image.open(os.path.join(self.data_path, self.images[index])))
+            sens = torch.tensor(self.sens[index])
+            return img, sens
+        elif self.mode == "unlabeled":
+            img = self.tf(Image.open(os.path.join(self.data_path, self.ulb_images[index])))
+            sens = torch.tensor(self.ulb_sens[index])
+            return img, sens, index
+        elif self.mode == "gen_semi":
+            img = self.tf(Image.open(os.path.join(self.data_path, self.gen_ulb_images[index])))
+            sens = torch.tensor(self.gen_ulb_sens[index])
+            return img, sens, index
+        elif self.mode == "clf_semi":
+            if os.path.split(self.clf_ulb_images[index])[0] == "":
+                img = self.tf(Image.open(os.path.join(self.data_path, self.clf_ulb_images[index])))
+            else:
+                img = self.gen_tf(Image.open(self.clf_ulb_images[index]))
+            sens = torch.tensor(self.clf_ulb_sens[index])
+            return img, sens, index
 
     def __len__(self):
-        return self.length
+        if self.mode == "labeled":
+            return len(self.images)
+        elif self.mode == "unlabeled":
+            return len(self.ulb_images)
+        elif self.mode == "gen_semi":
+            return len(self.gen_ulb_images)
+        elif self.mode == "clf_semi":
+            return len(self.clf_ulb_images)
